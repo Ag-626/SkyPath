@@ -6,11 +6,13 @@ import org.junit.jupiter.api.Test;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.ResourceLoader;
+import org.springframework.lang.NonNull;
 
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
-import org.springframework.lang.NonNull;
+import java.util.Map;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -19,10 +21,11 @@ import static org.junit.jupiter.api.Assertions.*;
  * These tests avoid any mocking framework. They use a small in-memory
  * FlightsDatasetLoader implementation that returns JSON content from a string,
  * and real mappers/repositories to verify behavior:
- *  - valid flights are loaded and grouped by origin,
+ *  - valid flights are loaded,
  *  - missing 'flights' array causes a fail-fast IllegalStateException,
  *  - datasets with no valid flights cause a fail-fast IllegalStateException,
- *  - search methods behave as expected for known/unknown origins/destinations,
+ *  - route-based lookups (origin + destination) behave as expected,
+ *  - the flight network adjacency is correct and unmodifiable,
  *  - exposed collections are unmodifiable.
  */
 class FlightRepositoryInMemoryTest {
@@ -30,11 +33,10 @@ class FlightRepositoryInMemoryTest {
   /**
    * Happy-path test:
    * Verifies that a dataset with valid airports and flights is loaded correctly,
-   * that flights are grouped by origin, and that search methods return the
-   * expected results.
+   * that route-based lookups work, and that the route adjacency graph is built.
    */
   @Test
-  void constructor_shouldLoadValidFlightsAndSupportSearchByOriginAndDestination() {
+  void constructor_shouldLoadValidFlightsAndSupportRouteLookups() {
     // given
     String json = """
         {
@@ -103,15 +105,29 @@ class FlightRepositoryInMemoryTest {
     List<Flight> allFlights = flightRepository.findAll();
     assertEquals(3, allFlights.size(), "Expected three flights to be loaded");
 
-    List<Flight> fromJfk = flightRepository.findByOrigin("JFK");
-    assertEquals(2, fromJfk.size(), "Expected two flights originating from JFK");
-
-    List<Flight> fromLax = flightRepository.findByOrigin("LAX");
-    assertEquals(1, fromLax.size(), "Expected one flight originating from LAX");
-
-    List<Flight> jfkToLax = flightRepository.findByOriginAndDestination("JFK", "LAX");
+    // Route-based lookup: JFK -> LAX
+    List<Flight> jfkToLax = flightRepository.findByRoute("JFK", "LAX");
     assertEquals(1, jfkToLax.size(), "Expected one flight from JFK to LAX");
     assertEquals("SP100", jfkToLax.get(0).getFlightNumber());
+
+    // Route-based lookup: JFK -> SFO
+    List<Flight> jfkToSfo = flightRepository.findByRoute("JFK", "SFO");
+    assertEquals(1, jfkToSfo.size(), "Expected one flight from JFK to SFO");
+    assertEquals("SP101", jfkToSfo.get(0).getFlightNumber());
+
+    // Route-based lookup: LAX -> JFK
+    List<Flight> laxToJfk = flightRepository.findByRoute("LAX", "JFK");
+    assertEquals(1, laxToJfk.size(), "Expected one flight from LAX to JFK");
+    assertEquals("SP200", laxToJfk.get(0).getFlightNumber());
+
+    // Adjacency: JFK should have edges to LAX and SFO, LAX should have edge to JFK
+    Map<String, Set<String>> adjacency = flightRepository.getRouteAdjacency();
+    assertTrue(adjacency.containsKey("JFK"), "Adjacency should contain origin JFK");
+    assertTrue(adjacency.containsKey("LAX"), "Adjacency should contain origin LAX");
+    assertEquals(Set.of("LAX", "SFO"), adjacency.get("JFK"),
+        "JFK should connect to LAX and SFO");
+    assertEquals(Set.of("JFK"), adjacency.get("LAX"),
+        "LAX should connect to JFK");
   }
 
   /**
@@ -196,38 +212,20 @@ class FlightRepositoryInMemoryTest {
 
   /**
    * Edge case:
-   * Verifies that requesting flights from an unknown origin code returns
+   * Verifies that requesting flights for an unknown route returns
    * an empty (but non-null) list.
    */
   @Test
-  void findByOrigin_shouldReturnEmptyListForUnknownOrigin() {
+  void findByRoute_shouldReturnEmptyListForUnknownRoute() {
     // given
     FlightRepositoryInMemory repository = createSimpleRepositoryWithOneFlight();
 
     // when
-    List<Flight> result = repository.findByOrigin("UNKNOWN");
+    List<Flight> result = repository.findByRoute("JFK", "SFO");
 
     // then
     assertNotNull(result, "Result list should never be null");
-    assertTrue(result.isEmpty(), "Expected empty list for unknown origin code");
-  }
-
-  /**
-   * Edge case:
-   * Verifies that findByOriginAndDestination returns an empty list when there
-   * are no flights matching the given origin/destination pair.
-   */
-  @Test
-  void findByOriginAndDestination_shouldReturnEmptyWhenNoMatch() {
-    // given
-    FlightRepositoryInMemory repository = createSimpleRepositoryWithOneFlight();
-
-    // when
-    List<Flight> result = repository.findByOriginAndDestination("JFK", "SFO");
-
-    // then
-    assertNotNull(result, "Result list should never be null");
-    assertTrue(result.isEmpty(), "Expected empty list when no flights match the given route");
+    assertTrue(result.isEmpty(), "Expected empty list for unknown route");
   }
 
   /**
@@ -251,20 +249,44 @@ class FlightRepositoryInMemoryTest {
 
   /**
    * API contract test:
-   * Verifies that the list returned by findByOrigin() is unmodifiable.
+   * Verifies that the list returned by findByRoute() is unmodifiable.
    */
   @Test
-  void findByOrigin_shouldReturnUnmodifiableList() {
+  void findByRoute_shouldReturnUnmodifiableList() {
     // given
     FlightRepositoryInMemory repository = createSimpleRepositoryWithOneFlight();
 
-    List<Flight> fromJfk = repository.findByOrigin("JFK");
-    assertEquals(1, fromJfk.size(), "Precondition: expected one flight from JFK");
+    List<Flight> jfkToLax = repository.findByRoute("JFK", "LAX");
+    assertEquals(1, jfkToLax.size(), "Precondition: expected one flight from JFK to LAX");
 
     // when / then
     assertThrows(UnsupportedOperationException.class,
-        () -> fromJfk.add(fromJfk.get(0)),
-        "findByOrigin() should return an unmodifiable list");
+        () -> jfkToLax.add(jfkToLax.get(0)),
+        "findByRoute() should return an unmodifiable list");
+  }
+
+  /**
+   * API contract test:
+   * Verifies that the adjacency map and its inner sets are unmodifiable.
+   */
+  @Test
+  void routeAdjacency_shouldBeUnmodifiable() {
+    // given
+    FlightRepositoryInMemory repository = createSimpleRepositoryWithOneFlight();
+
+    Map<String, Set<String>> adjacency = repository.getRouteAdjacency();
+
+    // when / then: outer map must be unmodifiable
+    assertThrows(UnsupportedOperationException.class,
+        () -> adjacency.put("NEW_ORIGIN", Set.of("NEW_DEST")),
+        "Adjacency map should be unmodifiable");
+
+    // and inner sets must be unmodifiable
+    Set<String> fromJfk = adjacency.get("JFK");
+    assertNotNull(fromJfk, "Precondition: adjacency should contain JFK");
+    assertThrows(UnsupportedOperationException.class,
+        () -> fromJfk.add("SOME_DEST"),
+        "Adjacency destination sets should be unmodifiable");
   }
 
   // --------------------------------------------------------------------------
