@@ -113,9 +113,14 @@ public class FlightSearchAlgorithm {
 
     // 3. Sort itineraries to present "best" ones first:
     //    fewer stops, shorter total duration, cheaper.
+//    itineraries.sort(
+//        Comparator.comparingInt(Itinerary::getNumberOfStops)
+//            .thenComparing(Itinerary::getTotalDuration)
+//            .thenComparing(Itinerary::getTotalPrice)
+//    );
     itineraries.sort(
-        Comparator.comparingInt(Itinerary::getNumberOfStops)
-            .thenComparing(Itinerary::getTotalDuration)
+        Comparator.comparing(Itinerary::getTotalDuration)
+            .thenComparingInt(Itinerary::getNumberOfStops)
             .thenComparing(Itinerary::getTotalPrice)
     );
 
