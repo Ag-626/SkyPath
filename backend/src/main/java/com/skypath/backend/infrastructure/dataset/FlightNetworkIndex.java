@@ -7,12 +7,10 @@ import java.util.*;
 /**
  * Read-side index for flights, built once at startup from the
  * immutable list of Flight entities.
- *
  * Responsibilities:
  *  - Group flights by (origin, destination) route, sorted by departure time.
  *  - Build a simple flight network graph (route adjacency) so we can
  *    search airport paths like O→X→Y→D without touching flights first.
- *
  * This keeps FlightRepositoryInMemory focused on loading and exposing
  * data, while this class focuses on indexing and lookup strategies.
  */
@@ -118,7 +116,6 @@ public final class FlightNetworkIndex {
   /**
    * Return all flights for the given (origin, destination) route,
    * sorted by departureTimeUtc ascending.
-   *
    * If there are no flights on that route, an empty list is returned.
    */
   public List<Flight> findByRoute(String originCode, String destinationCode) {
