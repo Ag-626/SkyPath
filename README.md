@@ -108,6 +108,7 @@ cd SkyPath
 # 3) Build and start both services
 docker-compose up --build
 ```
+Once both containers are up, open the frontend in your browser at: http://localhost:3000
 
 To stop everything:
 ```bash
@@ -472,7 +473,7 @@ If I had more time, I’d prioritise the following extensions:
 
 
 - **Observability & tuning**  
-  Add metrics (search latency, result counts, cache hit ratio), structured logs, and richer health checks (dataset loaded, indexes built). Move more knobs into configuration (e.g. `maxStops`, layover thresholds) to tune behaviour without code changes.
+  Add metrics (search latency, result counts, cache hit ratio), structured logs, and richer health checks (dataset loaded, indexes built).
 
 
 - **Frontend UX: timezones & controls**  
