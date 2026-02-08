@@ -1,0 +1,23 @@
+services:
+  backend:
+    build: ./backend
+    container_name: skypath-backend
+    ports:
+      - "8080:8080"   # main API
+      - "8081:8081"   # actuator/management
+    environment:
+      # If you have any Spring properties to override, add them here
+      # Example:
+      # - SPRING_PROFILES_ACTIVE=prod
+      # - SERVER_PORT=8080
+      # - MANAGEMENT_SERVER_PORT=8081
+      # For now we rely on your current application.properties defaults
+      - JAVA_OPTS=
+
+  frontend:
+    build: ./frontend
+    container_name: skypath-frontend
+    depends_on:
+      - backend
+    ports:
+      - "3000:80"     # browser will hit http://localhost:3000
